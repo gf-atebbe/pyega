@@ -1,0 +1,19 @@
+pyEGA version 1.0.0
+James S. Blachly, MD
+
+usage: pyega.py [-h] [-d] {requests,rmreq,files,fetch} ...
+
+Download from EMBL EBI's EGA (European Genome-phenome Archive
+
+positional arguments:
+  {requests,rmreq,files,fetch}
+                        subcommands
+    requests            List outstanding requests
+    rmreq               Delete (remove) request label
+    files               List files (optionally, for a specific request label)
+    fetch               Fetch a dataset or file
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d, --debug           Extra debugging messages
+
