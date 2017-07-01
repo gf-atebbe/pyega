@@ -1,6 +1,13 @@
 pyEGA uses the EGA REST API to download authorized datasets and files
 and is an alternaive to the supplied EgaDemoClient.jar
 
+
+REQUIREMENTS
+Python "requests" module
+http://docs.python-requests.org/en/master/
+pip3 install requests
+
+
 First, store your credentials in ~/.ega.json:
 {
     "username": "my.email@university.edu",
