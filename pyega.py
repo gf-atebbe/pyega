@@ -94,7 +94,8 @@ def pretty_print_requests(req_ticket):
 
         req_labels[req_label] += 1
 
-    print("{:36} {}".format("\nRequest label", "N (outstanding) files"))
+    print("\n")
+    print("{:36} {}".format("Request label", "N (outstanding) files"))
     print("{:36} {}".format(   "-"*36,         "---------------------"))
 
     for (label,n) in req_labels.items():
@@ -185,7 +186,7 @@ def api_download_ticket(ticket, local_filename):
     """Download an individual file, encrypted, with a download ticket UUID"""
 
     url = "http://ega.ebi.ac.uk/ega/rest/ds/v2/downloads/{}".format(ticket)
-    print("Requesting {}".format(url))
+    if (debug): print("Requesting {}".format(url))
 
     with open(local_filename, 'wb+') as fo:
         headers = {'Accept': 'application/octet-stream'}
