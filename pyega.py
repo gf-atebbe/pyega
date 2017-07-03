@@ -75,8 +75,47 @@ def pretty_print_authorized_datasets(reply):
     for datasetid in reply['response']['result']:
         print(datasetid)
 
-def list_files_in_dataset(session, dataset):
-    pass
+def api_list_files_in_dataset(session, dataset):
+    headers = {'Accept': 'application/json'}
+    url = "https://ega.ebi.ac.uk/ega/rest/access/v2/datasets/{}/files?session={}".format(dataset, session)
+    r = requests.get(url, headers = headers)
+    reply = r.json()
+    if(debug):  print( json.dumps(reply, indent=4) )
+    if reply['header']['userMessage'] != "OK":
+        print("List files in dataset {} failed".format(dataset))
+        api_logout(session)
+        sys.exit(1)
+
+    return reply
+
+def pretty_print_files_in_dataset(reply, dataset):
+    """
+    Print a table of files in authorized dataset from api call api_list_files_in_dataset
+
+    "response": {
+        "numTotalResults": 33,
+        "result": [
+            {
+                "fileIndex": "keke.txt",
+                "fileSize": "25268274155",
+                "fileStatus": "available",
+                "fileName": "/EGAR00001132194/bisulphite-july19/C1VNPACXX_4_0.unaligned.bam.gpg",
+                "fileDataset": "EGAD00001000672",
+                "fileMD5": "TODO: MD5",
+                "fileID": "EGAF00000239418"
+            },
+    """
+    format_string = "{:15} {:15} {:6.6} {:12} {:32} {}"
+
+    def status(status_string):
+        if (status_string=="available"):   return "ok"
+        else: return ""
+
+    print("{}:\t{} files\n".format(dataset, reply['response']['numTotalResults']))
+
+    print(format_string.format("Stable ID", "fileIndex(?)", "Status", "Bytes", "MD5", "File name"))
+    for res in reply['response']['result']:
+        print(format_string.format( res['fileID'], res['fileIndex'], res['fileStatus'], res['fileSize'], res['fileMD5'], res['fileName'] ) )
 
 def api_list_requests(session, req=""):
     """Requests download tickets (optionally for a given request/label)"""
@@ -222,6 +261,9 @@ def main():
 
     parser_ds    = subparsers.add_parser("datasets", help="List authorized datasets")
 
+    parser_dsinfo= subparsers.add_parser("datasetinfo", help="List files in a specified dataset")
+    parser_dsinfo.add_argument("identifier", help="Stable id for dataset (e.g. EGAD00000000001)")
+
     parser_reqs  = subparsers.add_parser("requests",  help="List outstanding requests")
 
     parser_rmreq = subparsers.add_parser("rmreq", help="Delete (remove) request label")
@@ -246,6 +288,13 @@ def main():
     if args.subcommand == "datasets":
         reply = api_list_authorized_datasets(session)
         pretty_print_authorized_datasets(reply)
+
+    if args.subcommand == "datasetinfo":
+        if (args.identifier[3] != 'D'):
+            print("Unrecognized identifier -- only datasets (EGAD...) supported")
+            sys.exit(1)
+        reply = api_list_files_in_dataset(session, args.identifier)
+        pretty_print_files_in_dataset(reply, args.identifier)
 
     if args.subcommand == "requests":
         list_reply = api_list_requests(session)

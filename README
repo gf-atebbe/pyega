@@ -44,14 +44,16 @@ Files will be overwritten without warning!
 pyEGA version 1.0.0
 James S. Blachly, MD
 
-usage: pyega.py [-h] [-d] {datasets,requests,rmreq,files,fetch} ...
+usage: pyega.py [-h] [-d]
+                {datasets,datasetinfo,requests,rmreq,files,fetch} ...
 
 Download from EMBL EBI's EGA (European Genome-phenome Archive
 
 positional arguments:
-  {datasets,requests,rmreq,files,fetch}
+  {datasets,datasetinfo,requests,rmreq,files,fetch}
                         subcommands
     datasets            List authorized datasets
+    datasetinfo         List files in a specified dataset
     requests            List outstanding requests
     rmreq               Delete (remove) request label
     files               List files (optionally, for a specific request label)
@@ -60,4 +62,3 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   -d, --debug           Extra debugging messages
-
