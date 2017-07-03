@@ -23,7 +23,21 @@ You will still need to decrypt using EgaDemoClient.java
 
 If you know the stable identifier of a dataset (EGAD...) or file (EGAF...)
 you can fetch it directly with the "fetch" subcommand. Other commands
-to look at specific requests or file details are available.
+to look at specific requests or file details are available. These would
+mostly apply to aborted downloads, etc., as the "fetch" command executes
+a complete (make request -> list request [metadata] -> download request)
+workflow automatically. The "fetch" command will also save a copy of the
+request metadata as <requestlabelid>.json
+
+
+TODO
+Verify file size and MD5 hash after download.
+
+BUGS
+Files will be overwritten without warning.
+
+
+
 
 
 pyEGA version 1.0.0
