@@ -31,25 +31,27 @@ request metadata as <requestlabelid>.json
 
 
 TODO
-Verify file size and MD5 hash after download.
+Download metadata package
+List metadata when listing authorized datasets
+Verify file size and MD5 hash after download
+Parallel download streams
 
 BUGS
-Files will be overwritten without warning.
-
-
+Files will be overwritten without warning!
 
 
 
 pyEGA version 1.0.0
 James S. Blachly, MD
 
-usage: pyega.py [-h] [-d] {requests,rmreq,files,fetch} ...
+usage: pyega.py [-h] [-d] {datasets,requests,rmreq,files,fetch} ...
 
 Download from EMBL EBI's EGA (European Genome-phenome Archive
 
 positional arguments:
-  {requests,rmreq,files,fetch}
+  {datasets,requests,rmreq,files,fetch}
                         subcommands
+    datasets            List authorized datasets
     requests            List outstanding requests
     rmreq               Delete (remove) request label
     files               List files (optionally, for a specific request label)

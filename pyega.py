@@ -55,7 +55,25 @@ def api_logout(session):
     print("[Logout]")
 
 def api_list_authorized_datasets(session):
-    pass
+    """List datasets to which the credentialed user has authorized access"""
+
+    headers = {'Accept':'application/json'}
+    url = "https://ega.ebi.ac.uk/ega/rest/access/v2/datasets?session={}".format(session)
+    r = requests.get(url, headers = headers)
+    reply = r.json()
+    if(debug):  print( json.dumps(reply, indent=4) )
+    if reply['header']['userMessage'] != "OK":
+        print("List authorized datasets failed")
+        api_logout(session)
+        sys.exit(1)
+
+    return reply
+
+def pretty_print_authorized_datasets(reply):
+    print("Dataset stable ID")
+    print("-----------------")
+    for datasetid in reply['response']['result']:
+        print(datasetid)
 
 def list_files_in_dataset(session, dataset):
     pass
@@ -202,6 +220,8 @@ def main():
     # ArgumentParser.add_subparsers([title][, description][, prog][, parser_class][, action][, option_string][, dest][, help][, metavar])
     subparsers = parser.add_subparsers(dest="subcommand", help = "subcommands")
 
+    parser_ds    = subparsers.add_parser("datasets", help="List authorized datasets")
+
     parser_reqs  = subparsers.add_parser("requests",  help="List outstanding requests")
 
     parser_rmreq = subparsers.add_parser("rmreq", help="Delete (remove) request label")
@@ -222,6 +242,10 @@ def main():
     session = api_login(username, password)
     if not session:
         sys.exit(1)
+
+    if args.subcommand == "datasets":
+        reply = api_list_authorized_datasets(session)
+        pretty_print_authorized_datasets(reply)
 
     if args.subcommand == "requests":
         list_reply = api_list_requests(session)
@@ -248,6 +272,10 @@ def main():
 
         list_reply = api_list_requests(session, req_label)
 
+        # Save a copy of the request ticket
+        with open(req_label + ".json", "w+") as fo:
+            print("Writing copy of request ticket to {}".format(req_label + ".json"))
+            fo.write( json.dumps(list_reply) )
         download_request(list_reply)
 
     api_logout(session)
