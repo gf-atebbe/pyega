@@ -1,12 +1,16 @@
 import argparse
-import os
-import sys
+import boto3
 import json
+import os
 import requests
+import subprocess as sub
+import sys
+from urllib.parse import urlparse
 import uuid
 
 debug = False
-version = "1.0.0"
+version = "1.1.0"
+
 
 def load_credentials(filepath = "~/.ega.json"):
     """Load credentials for EMBL/EBI EGA from ~/.ega.json"""
@@ -21,6 +25,7 @@ def load_credentials(filepath = "~/.ega.json"):
         sys.exit(1)
 
     return (creds['username'], creds['password'], creds['key'])
+
 
 def api_login(username, password):
     headers = {'Accept': 'application/json'}
@@ -48,11 +53,13 @@ def api_login(username, password):
 
     return session_token
 
+
 def api_logout(session):
     headers = {'Accept': 'application/json'}
     url = "https://ega.ebi.ac.uk/ega/rest/access/v2/users/logout?session={}".format(session)
     r = requests.get(url, headers = headers)
     print("[Logout]")
+
 
 def api_list_authorized_datasets(session):
     """List datasets to which the credentialed user has authorized access"""
@@ -69,11 +76,13 @@ def api_list_authorized_datasets(session):
 
     return reply
 
+
 def pretty_print_authorized_datasets(reply):
     print("Dataset stable ID")
     print("-----------------")
     for datasetid in reply['response']['result']:
         print(datasetid)
+
 
 def api_list_files_in_dataset(session, dataset):
     headers = {'Accept': 'application/json'}
@@ -87,6 +96,7 @@ def api_list_files_in_dataset(session, dataset):
         sys.exit(1)
 
     return reply
+
 
 def pretty_print_files_in_dataset(reply, dataset):
     """
@@ -117,6 +127,7 @@ def pretty_print_files_in_dataset(reply, dataset):
     for res in reply['response']['result']:
         print(format_string.format( res['fileID'], res['fileIndex'], res['fileStatus'], res['fileSize'], res['fileMD5'], res['fileName'] ) )
 
+
 def api_list_requests(session, req=""):
     """Requests download tickets (optionally for a given request/label)"""
 
@@ -140,7 +151,8 @@ def api_list_requests(session, req=""):
         print("list_requests({}) failed".format(req))
         if(debug): print( json.dumps(reply, indent=4) )
         sys.exit(1)
-    
+
+
 def pretty_print_requests(req_ticket):
     req_labels = {}     # dict to track no. (outstanding) files belonging to request label
     for res in req_ticket['response']['result']:
@@ -158,6 +170,7 @@ def pretty_print_requests(req_ticket):
     for (label,n) in req_labels.items():
         print("{:36} {}".format(label, n))
 
+
 def pretty_print_files(req_ticket):
     nresults = req_ticket['response']['numTotalResults']
 
@@ -170,7 +183,8 @@ def pretty_print_files(req_ticket):
         download_ticket = res['ticket']
 
         print("{:15} ({:12}) {} {}".format(remote_fileid, remote_filesize, download_ticket, remote_filename))
-    
+
+
 def api_delete_request(session, req):
     """Delete a single request label"""
 
@@ -187,8 +201,10 @@ def api_delete_request(session, req):
         print("sys.exit(1)")
         sys.exit(1)
 
+
 def delete_request_ticket(session, req, ticket):
     pass
+
 
 def api_make_request(session, id_type, stable_id, req_label, key="ega"):
     """Request dataset or file by stable ID"""
@@ -221,6 +237,7 @@ def api_make_request(session, id_type, stable_id, req_label, key="ega"):
         if(debug): print( json.dumps(reply, indent=4) )
         sys.exit(1)
 
+
 def download_request(req_ticket):
     
     if req_ticket['header']['userMessage'] != "OK":
@@ -239,6 +256,7 @@ def download_request(req_ticket):
         dl_ticket = res['ticket']
         api_download_ticket(dl_ticket, local_filename)
 
+
 def api_download_ticket(ticket, local_filename):
     """Download an individual file, encrypted, with a download ticket UUID"""
 
@@ -250,6 +268,60 @@ def api_download_ticket(ticket, local_filename):
         r = requests.get(url, headers=headers)
         fo.write(r.content)
 
+
+def sync_request(req_ticket, destination, username, password, decryption_key):
+    if req_ticket['header']['userMessage'] != "OK":
+        print("sync_request(): request ticket status Not ok")
+        sys.exit(1)
+
+    nresults = req_ticket['response']['numTotalResults']
+    print("Number of results: {}".format(nresults))
+
+    parse_result = urlparse(destination)
+    s3_bucket = parse_result.netloc.lstrip('/')
+    s3_key = parse_result.path
+
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(s3_bucket)
+
+    for res in req_ticket['response']['result']:
+        remote_filename = res['fileName']
+        remote_filesize = res['fileSize']
+
+        local_filename = os.path.split(remote_filename)[1]
+        full_s3_key = os.path.join(s3_key, local_filename.replace('.cip', ''))
+        if full_s3_key.startswith('/'):
+            full_s3_key = full_s3_key[1:]
+
+        objs = list(bucket.objects.filter(Prefix=full_s3_key))
+        if len(objs) > 0 and objs[0].key == full_s3_key:
+            print("Skipping {} ({} bytes)".format(remote_filename, remote_filesize))
+            continue
+        else:
+            print("Downloading {} ({} bytes)".format(remote_filename, remote_filesize))
+
+            dl_ticket = res['ticket']
+            api_download_ticket(dl_ticket, local_filename)
+
+            if local_filename.endswith('.cip') or local_filename.endswith('.gpg'):
+                cmd = 'java -jar /usr/src/app/EgaDemoClient.jar -p %s %s -dc %s -dck %s' % (username, password,
+                                                                                            local_filename, decryption_key)
+                print(cmd)
+
+                p = sub.Popen(cmd.split(), stdout=sub.PIPE, stderr=sub.PIPE)
+                output, errors = p.communicate()
+
+            extra_args = {'ServerSideEncryption': "AES256"}
+            unencrypted = local_filename.replace('.cip', '').replace('.gpg', '')
+            print('Uploading %s to %s' % (unencrypted, os.path.join(destination, unencrypted)))
+            bucket.upload_file(unencrypted, full_s3_key, ExtraArgs=extra_args)
+
+            if os.path.exists(local_filename):
+                os.remove(local_filename)
+            if os.path.exists(unencrypted):
+                os.remove(unencrypted)
+
+
 def main():
     print("pyEGA version {}".format(version))
     print("James S. Blachly, MD\n")
@@ -259,12 +331,12 @@ def main():
     # ArgumentParser.add_subparsers([title][, description][, prog][, parser_class][, action][, option_string][, dest][, help][, metavar])
     subparsers = parser.add_subparsers(dest="subcommand", help = "subcommands")
 
-    parser_ds    = subparsers.add_parser("datasets", help="List authorized datasets")
+    parser_ds = subparsers.add_parser("datasets", help="List authorized datasets")
 
     parser_dsinfo= subparsers.add_parser("datasetinfo", help="List files in a specified dataset")
     parser_dsinfo.add_argument("identifier", help="Stable id for dataset (e.g. EGAD00000000001)")
 
-    parser_reqs  = subparsers.add_parser("requests",  help="List outstanding requests")
+    parser_reqs = subparsers.add_parser("requests",  help="List outstanding requests")
 
     parser_rmreq = subparsers.add_parser("rmreq", help="Delete (remove) request label")
     parser_rmreq.add_argument("label", help="Request label to delete")
@@ -273,7 +345,14 @@ def main():
     parser_files.add_argument("-l", "--label", default="", help="Optional request label")
 
     parser_fetch = subparsers.add_parser("fetch", help="Fetch a dataset or file")
-    parser_fetch.add_argument("identifier", help="Stable id for dataset (e.g. EGAD00000000001) or file (e.g. EGAF12345678901)")
+    parser_fetch.add_argument("identifier",
+                              help="Stable id for dataset (e.g. EGAD00000000001) or file (e.g. EGAF12345678901)")
+
+    parser_fetch = subparsers.add_parser("sync", help="Sync a dataset or file to a remote location")
+    parser_fetch.add_argument("identifier",
+                              help="Stable id for dataset (e.g. EGAD00000000001) or file (e.g. EGAF12345678901)")
+    parser_fetch.add_argument("destination", help="The sync target")
+
     args = parser.parse_args()
     if args.debug:
         global debug
@@ -290,7 +369,7 @@ def main():
         pretty_print_authorized_datasets(reply)
 
     if args.subcommand == "datasetinfo":
-        if (args.identifier[3] != 'D'):
+        if args.identifier[3] != 'D':
             print("Unrecognized identifier -- only datasets (EGAD...) supported")
             sys.exit(1)
         reply = api_list_files_in_dataset(session, args.identifier)
@@ -308,15 +387,15 @@ def main():
         pretty_print_files(list_reply)
 
     elif args.subcommand == "fetch":
-        if (args.identifier[3] == 'D'):
+        if args.identifier[3] == 'D':
             id_type = "datasets"
-        elif(args.identifier[3] == 'F'):
+        elif args.identifier[3] == 'F':
             id_type = "files"
         else:
             print("Unrecognized identifier -- only datasets (EGAD...) and and files (EGAF...) supported")
             sys.exit(1)
 
-        req_label = str( uuid.uuid4() )
+        req_label = str(uuid.uuid4())
         req_reply = api_make_request(session, id_type, args.identifier, req_label, key)
 
         list_reply = api_list_requests(session, req_label)
@@ -327,8 +406,31 @@ def main():
             fo.write( json.dumps(list_reply) )
         download_request(list_reply)
 
+    elif args.subcommand == "sync":
+        if not args.destination.startswith('s3://'):
+            raise Exception('Error - sync destination must be an s3:// URI')
+
+        if args.identifier[3] == 'D':
+            id_type = "datasets"
+        elif args.identifier[3] == 'F':
+            id_type = "files"
+        else:
+            print("Unrecognized identifier -- only datasets (EGAD...) and and files (EGAF...) supported")
+            sys.exit(1)
+
+        req_label = str(uuid.uuid4())
+        req_reply = api_make_request(session, id_type, args.identifier, req_label, key)
+
+        list_reply = api_list_requests(session, req_label)
+
+        # Save a copy of the request ticket
+        with open(req_label + ".json", "w+") as fo:
+            print("Writing copy of request ticket to {}".format(req_label + ".json"))
+            fo.write( json.dumps(list_reply) )
+        sync_request(list_reply, args.destination, username, password, key)
+
     api_logout(session)
+
 
 if __name__ == "__main__":
     main()
-
